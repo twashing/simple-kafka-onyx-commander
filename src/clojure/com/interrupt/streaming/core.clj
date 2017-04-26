@@ -127,7 +127,7 @@
     :onyx/batch-size 50
     :kafka/zookeeper zookeeper-url
     :kafka/topic topic-read
-    :kafka/deserializer-fn :franzy.serialization.deserializers/edn-deserializer
+    :kafka/deserializer-fn :com.interrupt.streaming.core/deserialize-kafka-message
     :kafka/offset-reset :earliest
     :onyx/doc "Read commands from a Kafka topic"}
 
@@ -145,7 +145,7 @@
     :onyx/batch-size 50
     :kafka/zookeeper zookeeper-url
     :kafka/topic topic-write
-    :kafka/serializer-fn :franzy.serialization.serializers/edn-serializer
+    :kafka/serializer-fn :com.interrupt.streaming.core/serialize-kafka-message
     :kafka/request-size 307200
     :onyx/doc "Writes messages to a Kafka topic"}])
 
@@ -154,7 +154,18 @@
     :lifecycle/calls :com.interrupt.streaming.core/identity-lifecycle
     :onyx/doc "Lifecycle for logging segments"}])
 
+(def serializer (serializers/edn-serializer))
+(def deserializer (deserializers/edn-deserializer))
+
+(defn deserialize-kafka-message [bytes]
+  (.deserialize deserializer nil (String. bytes "UTF-8")))
+
+(defn serialize-kafka-message [data]
+  (.serialize serializer nil data))
+
 (comment
+
+  (serialize-kafka-message {:foo :bar})
 
   ;; 1
   (one-setup-topics)
