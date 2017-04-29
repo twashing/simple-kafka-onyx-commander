@@ -14,8 +14,8 @@
             [franzy.clients.consumer.defaults :as cd])
   (:import [java.util UUID]))
 
-(def zookeeper-url "simplekafkaonyxcommander_zookeeper_1:2181")
-(def kafka-url "simplekafkaonyxcommander_kafka_1:9092")
+(def zookeeper-url "zookeeper:2181")
+(def kafka-url "kafka:9092")
 
 (def topic-scanner-command "scanner-command")
 (def topic-scanner "scanner")
@@ -26,7 +26,7 @@
 (def value-deserializer (deserializers/edn-deserializer))
 
 (defn one-setup-topics []
-  (def zk-utils (client/make-zk-utils {:servers zookeeper-url} false))
+  (def zk-utils (client/make-zk-utils {:servers [zookeeper-url]} false))
   (def two (topics/create-topic! zk-utils topic-scanner-command 10))
   (def three (topics/create-topic! zk-utils topic-scanner 10))
   (topics/all-topics zk-utils))
@@ -123,33 +123,42 @@
     :onyx/type :input
     :onyx/medium :kafka
     :onyx/plugin :onyx.plugin.kafka/read-messages
+    :onyx/min-peers 1
     :onyx/max-peers 1
-    :onyx/batch-size 50
+    :onyx/batch-size 10
     :kafka/zookeeper zookeeper-url
     :kafka/topic topic-read
     :kafka/deserializer-fn :com.interrupt.streaming.core/deserialize-kafka-message
     :kafka/offset-reset :earliest
+    :onyx/fn ::spy
     :onyx/doc "Read commands from a Kafka topic"}
 
    {:onyx/name :process-commands
     :onyx/type :function
+    :onyx/min-peers 1
     :onyx/max-peers 1
-    :onyx/batch-size 50
+    :onyx/batch-size 10
     :onyx/fn :clojure.core/identity}
 
    {:onyx/name :write-messages
     :onyx/type :output
     :onyx/medium :kafka
     :onyx/plugin :onyx.plugin.kafka/write-messages
+    :onyx/min-peers 1
     :onyx/max-peers 1
-    :onyx/batch-size 50
+    :onyx/batch-size 10
     :kafka/zookeeper zookeeper-url
     :kafka/topic topic-write
     :kafka/serializer-fn :com.interrupt.streaming.core/serialize-kafka-message
     :kafka/request-size 307200
+    :onyx/fn ::spy
     :onyx/doc "Writes messages to a Kafka topic"}])
 
-(defn build-lifecycles []
+(defn spy [segment]
+  (prn "Spying segment: " segment)
+  segment)
+
+#_(defn build-lifecycles []
   [{:lifecycle/task :process-commands
     :lifecycle/calls :com.interrupt.streaming.core/identity-lifecycle
     :onyx/doc "Lifecycle for logging segments"}])
@@ -158,10 +167,11 @@
 (def deserializer (deserializers/edn-deserializer))
 
 (defn deserialize-kafka-message [bytes]
-  (.deserialize deserializer nil (String. bytes "UTF-8")))
+  (.deserialize deserializer nil bytes #_(String. bytes "UTF-8")))
 
 (defn serialize-kafka-message [data]
-  (.serialize serializer nil data))
+  (.serialize serializer nil {:message data
+                              :key "b"}))
 
 (comment
 
@@ -187,6 +197,28 @@
                            :zookeeper/address zookeeper-url)
         job {:workflow workflow
              :catalog (catalog zookeeper-url topic-scanner-command topic-scanner)
+             ;; :lifecycles (build-lifecycles)
+             :task-scheduler :onyx.task-scheduler/balanced}
+
+        ;; ===
+
+        env (onyx.api/start-env env-config)
+        peer-group (onyx.api/start-peer-group peer-config)
+        v-peers (onyx.api/start-peers 5 peer-group)
+        submission (onyx.api/submit-job peer-config job)]
+
+    (onyx.api/await-job-completion peer-config (:job-id submission)))
+
+  #_(let [tenancy-id (UUID/randomUUID)
+        config (load-config "dev-config.edn")
+        env-config (assoc (:env-config config)
+                          :onyx/tenancy-id tenancy-id
+                          :zookeeper/address zookeeper-url)
+        peer-config (assoc (:peer-config config)
+                           :onyx/tenancy-id tenancy-id
+                           :zookeeper/address zookeeper-url)
+        job {:workflow workflow
+             :catalog (catalog zookeeper-url topic-scanner-command topic-scanner)
              ;; :flow-conditions c/flow-conditions
              :lifecycles (build-lifecycles)
              ;; :windows c/windows
@@ -197,5 +229,6 @@
     ;; (make-topic! kafka-zookeeper events-topic)
     ;; (write-commands! kafka-brokers commands-topic commands)
 
-    (with-test-env [test-env [3 env-config peer-config]]
-      (onyx.api/submit-job peer-config job))))
+    (with-test-env [test-env [10 env-config peer-config]]
+      (let [submission(onyx.api/submit-job peer-config job)]
+        (onyx.api/await-job-completion peer-config (:job-id submission))))))

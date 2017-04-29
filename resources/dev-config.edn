@@ -6,8 +6,9 @@
   :onyx.bookkeeper/local-quorum-ports [3196 3197 3198]
   :onyx.bookkeeper/port 3196
   :zookeeper/address nil
-  :zookeeper/server? true
-  :zookeeper.server/port 2181}
+  ;;:zookeeper/server? true
+  ;; :zookeeper.server/port 2181
+  }
 
  :peer-config
  {:onyx/tenancy-id "dev"
@@ -16,6 +17,6 @@
   :onyx.peer/zookeeper-timeout 5000
   :onyx.messaging/impl :aeron
   :onyx.messaging/bind-addr "0.0.0.0"
-  :onyx.messaging/external-addr "0.0.0.0"
+  ;; :onyx.messaging/external-addr "0.0.0.0"
   :onyx.messaging/peer-port 40200
   :onyx.messaging.aeron/embedded-driver? true}}

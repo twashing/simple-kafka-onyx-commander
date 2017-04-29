@@ -24,11 +24,15 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.app
-    image: twashing/edgarly-app:latest
+    image: twashing/simple-kafka-onyx-commander:latest
     depends_on:
       - kafka
       - zookeeper
+    links:
+      - kafka:kafka
+      - zookeeper:zookeeper
     working_dir: ${PWD}
+    shm_size: 1G
     ports:
       - 7888:7888
     volumes:
