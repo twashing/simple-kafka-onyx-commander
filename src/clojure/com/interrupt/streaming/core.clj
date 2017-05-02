@@ -151,7 +151,7 @@
     :kafka/topic topic-write
     :kafka/serializer-fn :com.interrupt.streaming.core/serialize-kafka-message
     :kafka/request-size 307200
-    :onyx/fn ::spy
+    :onyx/fn ::wrap-message
     :onyx/doc "Writes messages to a Kafka topic"}])
 
 (defn spy [segment]
@@ -169,13 +169,13 @@
 (defn deserialize-kafka-message [bytes]
   (.deserialize deserializer nil bytes #_(String. bytes "UTF-8")))
 
-(defn serialize-kafka-message [data]
-  (.serialize serializer nil {:message data
-                              :key "b"}))
+(defn serialize-kafka-message [segment]
+  (.serialize serializer nil segment))
+
+(defn wrap-message [segment]
+  {:message segment})
 
 (comment
-
-  (serialize-kafka-message {:foo :bar})
 
   ;; 1
   (one-setup-topics)
