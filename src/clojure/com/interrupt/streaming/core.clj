@@ -123,6 +123,7 @@
     :onyx/type :input
     :onyx/medium :kafka
     :onyx/plugin :onyx.plugin.kafka/read-messages
+    :kafka/wrap-with-metadata? true
     :onyx/min-peers 1
     :onyx/max-peers 1
     :onyx/batch-size 10
@@ -166,14 +167,15 @@
 (def serializer (serializers/edn-serializer))
 (def deserializer (deserializers/edn-deserializer))
 
-(defn deserialize-kafka-message [bytes]
-  (.deserialize deserializer nil bytes #_(String. bytes "UTF-8")))
+(defn deserialize-kafka-message [segments]
+  (.deserialize deserializer nil segments #_(String. segments "UTF-8")))
 
 (defn serialize-kafka-message [segment]
   (.serialize serializer nil segment))
 
 (defn wrap-message [segment]
-  {:message segment})
+  {:message segment
+   :key "2430d750-c423-4c36-990f-9fc75e416322"})
 
 (comment
 
@@ -200,35 +202,9 @@
              ;; :lifecycles (build-lifecycles)
              :task-scheduler :onyx.task-scheduler/balanced}
 
-        ;; ===
-
         env (onyx.api/start-env env-config)
         peer-group (onyx.api/start-peer-group peer-config)
         v-peers (onyx.api/start-peers 5 peer-group)
         submission (onyx.api/submit-job peer-config job)]
 
-    (onyx.api/await-job-completion peer-config (:job-id submission)))
-
-  #_(let [tenancy-id (UUID/randomUUID)
-        config (load-config "dev-config.edn")
-        env-config (assoc (:env-config config)
-                          :onyx/tenancy-id tenancy-id
-                          :zookeeper/address zookeeper-url)
-        peer-config (assoc (:peer-config config)
-                           :onyx/tenancy-id tenancy-id
-                           :zookeeper/address zookeeper-url)
-        job {:workflow workflow
-             :catalog (catalog zookeeper-url topic-scanner-command topic-scanner)
-             ;; :flow-conditions c/flow-conditions
-             :lifecycles (build-lifecycles)
-             ;; :windows c/windows
-             ;; :triggers c/triggers
-             :task-scheduler :onyx.task-scheduler/balanced}]
-
-    ;; (make-topic! kafka-zookeeper commands-topic)
-    ;; (make-topic! kafka-zookeeper events-topic)
-    ;; (write-commands! kafka-brokers commands-topic commands)
-
-    (with-test-env [test-env [10 env-config peer-config]]
-      (let [submission(onyx.api/submit-job peer-config job)]
-        (onyx.api/await-job-completion peer-config (:job-id submission))))))
+    (onyx.api/await-job-completion peer-config (:job-id submission))))
