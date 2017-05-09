@@ -19,6 +19,8 @@
 
 (def topic-scanner-command "scanner-command")
 (def topic-scanner "scanner")
+(def topic-filtered-stocks "filtered-stocks")
+(def topic-stock-command "stock-command")
 
 (def key-serializer (serializers/keyword-serializer))
 (def value-serializer (serializers/edn-serializer))
@@ -26,14 +28,19 @@
 (def value-deserializer (deserializers/edn-deserializer))
 
 (defn one-setup-topics []
+
   (def zk-utils (client/make-zk-utils {:servers [zookeeper-url]} false))
-  (def two (topics/create-topic! zk-utils topic-scanner-command 10))
-  (def three (topics/create-topic! zk-utils topic-scanner 10))
+  (doseq [topic [topic-scanner-command
+                 topic-scanner
+                 topic-filtered-stocks
+                 topic-stock-command]]
+    (topics/create-topic! zk-utils topic 10))
+
   (topics/all-topics zk-utils))
 
 (defn two-write-to-topic
-  ([] (two-write-to-topic "a" {:foo :bar}))
-  ([k v]
+  ([topic] (two-write-to-topic topic "a" {:foo :bar}))
+  ([topic k v]
    (let [;; Use a vector if you wish for multiple servers in your cluster
          pc {:bootstrap.servers [kafka-url]
              :group.id          "group.one"}
@@ -47,18 +54,39 @@
          ;;optionally create some options, even just use the defaults explicitly
          ;;for those that don't need anything fancy...
          options (pd/make-default-producer-options)
-         topic topic-scanner-command
          partition 0]
 
      (with-open [p (producer/make-producer pc string-serializer value-serializer options)]
        (let [send-fut (send-async! p topic partition k v options)]
          (println "Async send results:" @send-fut))))))
 
+(defn find-task [catalog task-name]
+  (let [matches (filter #(= task-name (:onyx/name %)) catalog)]
+    (when-not (seq matches)
+      (throw (ex-info (format "Couldn't find task %s in catalog" task-name)
+                      {:catalog catalog :task-name task-name})))
+    (first matches)))
+
+(defn n-peers
+  "Takes a workflow and catalog, returns the minimum number of peers
+   needed to execute this job."
+  [catalog workflow]
+  (let [task-set (into #{} (apply concat workflow))]
+    (reduce
+     (fn [sum t]
+       (+ sum (or (:onyx/min-peers (find-task catalog t)) 1)))
+     0 task-set)))
+
 ;; As laid out in the "Edgarly Platform" diagram
 ;; https://drive.google.com/file/d/0B213_8Py7z1AVFpBRlFtd0FFUXM/view?usp=sharing
-(def workflow
+(def workflow-scanner-command
   [[:scanner-command :ibgateway]
    [:ibgateway :scanner]])
+
+(def workflow-scanner
+  [[:scanner :market-scanner]
+   [:market-scanner :filtered-stocks]])
+
 
 #_(def workflow
   [[:scanner-command :ibgateway]
@@ -66,38 +94,37 @@
 
    [:scanner :market-scanner]
    [:market-scanner :filtered-stocks]
+
    [:filtered-stocks :analytics]
-
-   ;;
    [:analytics :stock-command]
+
    [:stock-command :ibgateway]
-
    [:ibgateway :stock]
-   [:stock :analytics]
 
-   ;;
+   [:stock :analytics]
    [:analytics :predictive-analytics]
+
+   ;; **
    [:predictive-analytics :clnn]
    [:filtered-stocks :clnn]
+   [:clnn :trade-recommendations]
 
-   ;;
    [:clnn :historical-command]
    [:historical-command :ibgateway]
 
+   ;; **
    [:ibgateway :historical]
    [:historical :clnn]
-
-   ;;
    [:clnn :trade-recommendations]
+
    [:trade-recommendations :execution-engine]
-
-   ;;
    [:execution-engine :trades]
-   [:trades :bookeeping]
 
-   ;;
+   [:trades :bookeeping]
    [:bookeeping :positions]
-   [:positions :execution-engine]])
+
+   [:positions :edgarly]
+   [:edgarly :scanner-command]])
 
 (def printer (agent nil))
 (defn echo-segments [event lifecycle]
@@ -109,8 +136,9 @@
                              segment)))))
   {})
 
-(defn catalog [zookeeper-url topic-read topic-write]
-  [{:onyx/name :scanner-command
+(defn catalog-scanner-command [zookeeper-url topic-read topic-write]
+  [;;
+   {:onyx/name :scanner-command
     :onyx/type :input
     :onyx/medium :kafka
     :onyx/plugin :onyx.plugin.kafka/read-messages
@@ -123,7 +151,6 @@
     :kafka/deserializer-fn ::deserialize-kafka-message
     :kafka/key-deserializer-fn ::deserialize-kafka-key
     :kafka/offset-reset :earliest
-    ;;:onyx/fn ::spy
     :onyx/doc "Read from the 'scanner-command' Kafka topic"}
 
    {:onyx/name :ibgateway
@@ -145,7 +172,155 @@
     :kafka/serializer-fn ::serialize-kafka-message
     :kafka/key-serializer-fn ::serialize-kafka-key
     :kafka/request-size 307200
-    ;;:onyx/fn ::wrap-message
+    :onyx/doc "Writes messages to a Kafka topic"}])
+
+(defn catalog-scanner [zookeeper-url topic-read topic-write]
+  [{:onyx/name :scanner
+    :onyx/type :input
+    :onyx/medium :kafka
+    :onyx/plugin :onyx.plugin.kafka/read-messages
+    :kafka/wrap-with-metadata? true
+    :onyx/min-peers 1
+    :onyx/max-peers 1
+    :onyx/batch-size 10
+    :kafka/zookeeper zookeeper-url
+    :kafka/topic topic-read
+    :kafka/deserializer-fn ::deserialize-kafka-message
+    :kafka/key-deserializer-fn ::deserialize-kafka-key
+    :kafka/offset-reset :earliest
+    :onyx/doc "Read from the 'scanner-command' Kafka topic"}
+
+   {:onyx/name :market-scanner
+    :onyx/type :function
+    :onyx/min-peers 1
+    :onyx/max-peers 1
+    :onyx/batch-size 10
+    :onyx/fn ::local-identity}
+
+   {:onyx/name :filtered-stocks
+    :onyx/type :output
+    :onyx/medium :kafka
+    :onyx/plugin :onyx.plugin.kafka/write-messages
+    :onyx/min-peers 1
+    :onyx/max-peers 1
+    :onyx/batch-size 10
+    :kafka/zookeeper zookeeper-url
+    :kafka/topic topic-write
+    :kafka/serializer-fn ::serialize-kafka-message
+    :kafka/key-serializer-fn ::serialize-kafka-key
+    :kafka/request-size 307200
+    :onyx/doc "Writes messages to a Kafka topic"}])
+
+#_(defn catalog [zookeeper-url topic-read topic-write]
+  [;;
+   {:onyx/name :scanner-command
+    :onyx/type :input
+    :onyx/medium :kafka
+    :onyx/plugin :onyx.plugin.kafka/read-messages
+    :kafka/wrap-with-metadata? true
+    :onyx/min-peers 1
+    :onyx/max-peers 1
+    :onyx/batch-size 10
+    :kafka/zookeeper zookeeper-url
+    :kafka/topic topic-read
+    :kafka/deserializer-fn ::deserialize-kafka-message
+    :kafka/key-deserializer-fn ::deserialize-kafka-key
+    :kafka/offset-reset :earliest
+    :onyx/doc "Read from the 'scanner-command' Kafka topic"}
+
+   {:onyx/name :ibgateway
+    :onyx/type :function
+    :onyx/min-peers 1
+    :onyx/max-peers 1
+    :onyx/batch-size 10
+    :onyx/fn ::local-identity}
+
+   {:onyx/name :scanner
+    :onyx/type :output
+    :onyx/medium :kafka
+    :onyx/plugin :onyx.plugin.kafka/write-messages
+    :onyx/min-peers 1
+    :onyx/max-peers 1
+    :onyx/batch-size 10
+    :kafka/zookeeper zookeeper-url
+    :kafka/topic topic-write
+    :kafka/serializer-fn ::serialize-kafka-message
+    :kafka/key-serializer-fn ::serialize-kafka-key
+    :kafka/request-size 307200
+    :onyx/doc "Writes messages to a Kafka topic"}
+
+   ;;
+   {:onyx/name :scanner-input
+    :onyx/type :input
+    :onyx/medium :kafka
+    :onyx/plugin :onyx.plugin.kafka/read-messages
+    :kafka/wrap-with-metadata? true
+    :onyx/min-peers 1
+    :onyx/max-peers 1
+    :onyx/batch-size 10
+    :kafka/zookeeper zookeeper-url
+    :kafka/topic "scanner"
+    :kafka/deserializer-fn ::deserialize-kafka-message
+    :kafka/key-deserializer-fn ::deserialize-kafka-key
+    :kafka/offset-reset :earliest
+    :onyx/doc "Read from the 'scanner-command' Kafka topic"}
+
+   {:onyx/name :market-scanner
+    :onyx/type :function
+    :onyx/min-peers 1
+    :onyx/max-peers 1
+    :onyx/batch-size 10
+    :onyx/fn ::local-identity}
+
+   {:onyx/name :filtered-stocks
+    :onyx/type :output
+    :onyx/medium :kafka
+    :onyx/plugin :onyx.plugin.kafka/write-messages
+    :onyx/min-peers 1
+    :onyx/max-peers 1
+    :onyx/batch-size 10
+    :kafka/zookeeper zookeeper-url
+    :kafka/topic topic-write
+    :kafka/serializer-fn ::serialize-kafka-message
+    :kafka/key-serializer-fn ::serialize-kafka-key
+    :kafka/request-size 307200
+    :onyx/doc "Writes messages to a Kafka topic"}
+
+   ;;
+   {:onyx/name :filtered-stocks-input
+    :onyx/type :input
+    :onyx/medium :kafka
+    :onyx/plugin :onyx.plugin.kafka/read-messages
+    :kafka/wrap-with-metadata? true
+    :onyx/min-peers 1
+    :onyx/max-peers 1
+    :onyx/batch-size 10
+    :kafka/zookeeper zookeeper-url
+    :kafka/topic "filtered-stocks"
+    :kafka/deserializer-fn ::deserialize-kafka-message
+    :kafka/key-deserializer-fn ::deserialize-kafka-key
+    :kafka/offset-reset :earliest
+    :onyx/doc "Read from the 'scanner-command' Kafka topic"}
+
+   {:onyx/name :analytics
+    :onyx/type :function
+    :onyx/min-peers 1
+    :onyx/max-peers 1
+    :onyx/batch-size 10
+    :onyx/fn ::local-identity}
+
+   {:onyx/name :stock-command
+    :onyx/type :output
+    :onyx/medium :kafka
+    :onyx/plugin :onyx.plugin.kafka/write-messages
+    :onyx/min-peers 1
+    :onyx/max-peers 1
+    :onyx/batch-size 10
+    :kafka/zookeeper zookeeper-url
+    :kafka/topic topic-write
+    :kafka/serializer-fn ::serialize-kafka-message
+    :kafka/key-serializer-fn ::serialize-kafka-key
+    :kafka/request-size 307200
     :onyx/doc "Writes messages to a Kafka topic"}])
 
 (defn local-identity [segment]
@@ -177,27 +352,33 @@
   (one-setup-topics)
 
   ;; 2
-  (two-write-to-topic (str (UUID/randomUUID)) {:foo :bar})
+  (two-write-to-topic "scanner-command" (str (UUID/randomUUID)) {:foo :bar})
 
-  ;; 3
-  (let [tenancy-id (UUID/randomUUID)
-        config (load-config "dev-config.edn")
+  (let [config (load-config "dev-config.edn")
         env-config (assoc (:env-config config)
-                          :onyx/tenancy-id tenancy-id
                           :zookeeper/address zookeeper-url)
         peer-config (assoc (:peer-config config)
-                           :onyx/tenancy-id tenancy-id
                            :zookeeper/address zookeeper-url)
-        job {:workflow workflow
-             :catalog (catalog zookeeper-url topic-scanner-command topic-scanner)
-             :task-scheduler :onyx.task-scheduler/balanced}
-
         env (onyx.api/start-env env-config)
         peer-group (onyx.api/start-peer-group peer-config)
-        v-peers (onyx.api/start-peers 5 peer-group)
-        submission (onyx.api/submit-job peer-config job)]
 
-    (onyx.api/await-job-completion peer-config (:job-id submission))))
+        peer-count 6 ;; #spy/d (n-peers the-catalog the-workflow)
+        v-peers (onyx.api/start-peers peer-count peer-group)]
+
+    (let [the-workflow workflow-scanner-command
+          the-catalog (catalog-scanner-command zookeeper-url "scanner-command" "scanner")
+          job {:workflow the-workflow
+               :catalog the-catalog
+               :task-scheduler :onyx.task-scheduler/balanced}]
+      #spy/d (onyx.api/submit-job peer-config job))
+
+    (let [the-workflow workflow-scanner
+          the-catalog (catalog-scanner zookeeper-url "scanner" "filtered-stocks")
+          job {:workflow the-workflow
+               :catalog the-catalog
+               :task-scheduler :onyx.task-scheduler/balanced}]
+      #spy/d (onyx.api/submit-job peer-config job))))
+
 
 ;; TODO
 ;;
@@ -205,4 +386,7 @@
 ;; but exist across several projects?
 ;;
 ;; > How to split from a topic that has 1 partition, to a topic with n partitions
+
+
+
 

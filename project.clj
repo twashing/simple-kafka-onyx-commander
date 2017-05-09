@@ -23,7 +23,10 @@
                  [org.onyxplatform/onyx-kafka "0.10.0.0-SNAPSHOT"]
                  [ymilky/franzy "0.0.1"]
                  [ymilky/franzy-transit "0.0.1"]
-                 [ymilky/franzy-admin "0.0.1" :exclusions [org.slf4j/slf4j-api]]]
+                 [ymilky/franzy-admin "0.0.1" :exclusions [org.slf4j/slf4j-api]]
+
+                 [spyscope "0.1.5"]]
+  :injections [(require 'spyscope.core)]
 
   :source-paths ["src/clojure"]
   :profiles {:dev {:source-paths ["dev"]

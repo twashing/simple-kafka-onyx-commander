@@ -32,7 +32,7 @@ services:
       - kafka:kafka
       - zookeeper:zookeeper
     working_dir: ${PWD}
-    shm_size: 1G
+    shm_size: 2G
     ports:
       - 7888:7888
     volumes:
