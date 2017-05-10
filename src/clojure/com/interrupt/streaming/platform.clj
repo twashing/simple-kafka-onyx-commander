@@ -11,7 +11,11 @@
             [franzy.admin.zookeeper.client :as client]
             [franzy.admin.topics :as topics]
             [franzy.clients.producer.defaults :as pd]
-            [franzy.clients.consumer.defaults :as cd])
+            [franzy.clients.consumer.defaults :as cd]
+
+            [com.interrupt.streaming.platform.serialization]
+            [com.interrupt.streaming.platform.scanner-command :as psc]
+            [com.interrupt.streaming.platform.scanner :as ps])
   (:import [java.util UUID]))
 
 (def zookeeper-url "zookeeper:2181")
@@ -22,10 +26,6 @@
 (def topic-filtered-stocks "filtered-stocks")
 (def topic-stock-command "stock-command")
 
-(def key-serializer (serializers/keyword-serializer))
-(def value-serializer (serializers/edn-serializer))
-(def key-deserializer (deserializers/keyword-deserializer))
-(def value-deserializer (deserializers/edn-deserializer))
 
 (defn one-setup-topics []
 
@@ -79,15 +79,6 @@
 
 ;; As laid out in the "Edgarly Platform" diagram
 ;; https://drive.google.com/file/d/0B213_8Py7z1AVFpBRlFtd0FFUXM/view?usp=sharing
-(def workflow-scanner-command
-  [[:scanner-command :ibgateway]
-   [:ibgateway :scanner]])
-
-(def workflow-scanner
-  [[:scanner :market-scanner]
-   [:market-scanner :filtered-stocks]])
-
-
 #_(def workflow
   [[:scanner-command :ibgateway]
    [:ibgateway :scanner]
@@ -125,91 +116,6 @@
 
    [:positions :edgarly]
    [:edgarly :scanner-command]])
-
-(def printer (agent nil))
-(defn echo-segments [event lifecycle]
-  (send printer
-        (fn [_]
-          (doseq [segment (:onyx.core/batch event)]
-            (println (format "Peer %s saw segment %s"
-                             (:onyx.core/id event)
-                             segment)))))
-  {})
-
-(defn catalog-scanner-command [zookeeper-url topic-read topic-write]
-  [;;
-   {:onyx/name :scanner-command
-    :onyx/type :input
-    :onyx/medium :kafka
-    :onyx/plugin :onyx.plugin.kafka/read-messages
-    :kafka/wrap-with-metadata? true
-    :onyx/min-peers 1
-    :onyx/max-peers 1
-    :onyx/batch-size 10
-    :kafka/zookeeper zookeeper-url
-    :kafka/topic topic-read
-    :kafka/deserializer-fn ::deserialize-kafka-message
-    :kafka/key-deserializer-fn ::deserialize-kafka-key
-    :kafka/offset-reset :earliest
-    :onyx/doc "Read from the 'scanner-command' Kafka topic"}
-
-   {:onyx/name :ibgateway
-    :onyx/type :function
-    :onyx/min-peers 1
-    :onyx/max-peers 1
-    :onyx/batch-size 10
-    :onyx/fn ::local-identity}
-
-   {:onyx/name :scanner
-    :onyx/type :output
-    :onyx/medium :kafka
-    :onyx/plugin :onyx.plugin.kafka/write-messages
-    :onyx/min-peers 1
-    :onyx/max-peers 1
-    :onyx/batch-size 10
-    :kafka/zookeeper zookeeper-url
-    :kafka/topic topic-write
-    :kafka/serializer-fn ::serialize-kafka-message
-    :kafka/key-serializer-fn ::serialize-kafka-key
-    :kafka/request-size 307200
-    :onyx/doc "Writes messages to a Kafka topic"}])
-
-(defn catalog-scanner [zookeeper-url topic-read topic-write]
-  [{:onyx/name :scanner
-    :onyx/type :input
-    :onyx/medium :kafka
-    :onyx/plugin :onyx.plugin.kafka/read-messages
-    :kafka/wrap-with-metadata? true
-    :onyx/min-peers 1
-    :onyx/max-peers 1
-    :onyx/batch-size 10
-    :kafka/zookeeper zookeeper-url
-    :kafka/topic topic-read
-    :kafka/deserializer-fn ::deserialize-kafka-message
-    :kafka/key-deserializer-fn ::deserialize-kafka-key
-    :kafka/offset-reset :earliest
-    :onyx/doc "Read from the 'scanner-command' Kafka topic"}
-
-   {:onyx/name :market-scanner
-    :onyx/type :function
-    :onyx/min-peers 1
-    :onyx/max-peers 1
-    :onyx/batch-size 10
-    :onyx/fn ::local-identity}
-
-   {:onyx/name :filtered-stocks
-    :onyx/type :output
-    :onyx/medium :kafka
-    :onyx/plugin :onyx.plugin.kafka/write-messages
-    :onyx/min-peers 1
-    :onyx/max-peers 1
-    :onyx/batch-size 10
-    :kafka/zookeeper zookeeper-url
-    :kafka/topic topic-write
-    :kafka/serializer-fn ::serialize-kafka-message
-    :kafka/key-serializer-fn ::serialize-kafka-key
-    :kafka/request-size 307200
-    :onyx/doc "Writes messages to a Kafka topic"}])
 
 #_(defn catalog [zookeeper-url topic-read topic-write]
   [;;
@@ -323,28 +229,6 @@
     :kafka/request-size 307200
     :onyx/doc "Writes messages to a Kafka topic"}])
 
-(defn local-identity [segment]
-  (println "local-identity segment: " segment)
-  (dissoc segment :topic))
-
-(def deserializer (deserializers/edn-deserializer))
-(def serializer (serializers/edn-serializer))
-(def string-deserializer (franzy.serialization.deserializers/string-deserializer))
-(def string-serializer (franzy.serialization.serializers/string-serializer))
-
-(defn deserialize-kafka-message [segments]
-  (.deserialize deserializer nil segments))
-
-(defn serialize-kafka-message [segment]
-  (.serialize serializer nil segment))
-
-(defn deserialize-kafka-key [k]
-  (.deserialize string-deserializer topic-scanner-command k))
-
-(defn serialize-kafka-key [k]
-  (.serialize string-serializer topic-scanner k))
-
-
 
 (comment
 
@@ -365,28 +249,16 @@
         peer-count 6 ;; #spy/d (n-peers the-catalog the-workflow)
         v-peers (onyx.api/start-peers peer-count peer-group)]
 
-    (let [the-workflow workflow-scanner-command
-          the-catalog (catalog-scanner-command zookeeper-url "scanner-command" "scanner")
+    (let [the-workflow psc/workflow
+          the-catalog (psc/catalog zookeeper-url "scanner-command" "scanner")
           job {:workflow the-workflow
                :catalog the-catalog
                :task-scheduler :onyx.task-scheduler/balanced}]
       #spy/d (onyx.api/submit-job peer-config job))
 
-    (let [the-workflow workflow-scanner
-          the-catalog (catalog-scanner zookeeper-url "scanner" "filtered-stocks")
+    (let [the-workflow ps/workflow
+          the-catalog (ps/catalog zookeeper-url "scanner" "filtered-stocks")
           job {:workflow the-workflow
                :catalog the-catalog
                :task-scheduler :onyx.task-scheduler/balanced}]
       #spy/d (onyx.api/submit-job peer-config job))))
-
-
-;; TODO
-;;
-;; > How to break up the workflow, if the functions not only are executed on several machines,
-;; but exist across several projects?
-;;
-;; > How to split from a topic that has 1 partition, to a topic with n partitions
-
-
-
-
