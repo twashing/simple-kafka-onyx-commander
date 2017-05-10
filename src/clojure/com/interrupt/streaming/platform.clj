@@ -12,11 +12,19 @@
             [franzy.admin.topics :as topics]
             [franzy.clients.producer.defaults :as pd]
             [franzy.clients.consumer.defaults :as cd]
-
-            [com.interrupt.streaming.platform.serialization]
             [com.interrupt.streaming.platform.scanner-command :as psc]
-            [com.interrupt.streaming.platform.scanner :as ps])
+            [com.interrupt.streaming.platform.scanner :as ps]
+            [com.interrupt.streaming.platform.filtered-stocks :as pfs]
+            [com.interrupt.streaming.platform.stock-command :as pstc]
+            [com.interrupt.streaming.platform.stock :as pst]
+            [com.interrupt.streaming.platform.predictive-analytics :as pa]
+            [com.interrupt.streaming.platform.historical-command :as phc]
+            [com.interrupt.streaming.platform.historical :as ph]
+            [com.interrupt.streaming.platform.trade-recommendations :as ptr]
+            [com.interrupt.streaming.platform.trades :as pt]
+            [com.interrupt.streaming.platform.positions :as pp])
   (:import [java.util UUID]))
+
 
 (def zookeeper-url "zookeeper:2181")
 (def kafka-url "kafka:9092")
@@ -98,13 +106,11 @@
    ;; **
    [:predictive-analytics :clnn]
    [:filtered-stocks :clnn]
-   [:clnn :trade-recommendations]
-
    [:clnn :historical-command]
-   [:historical-command :ibgateway]
 
-   ;; **
+   [:historical-command :ibgateway]
    [:ibgateway :historical]
+
    [:historical :clnn]
    [:clnn :trade-recommendations]
 
@@ -258,6 +264,69 @@
 
     (let [the-workflow ps/workflow
           the-catalog (ps/catalog zookeeper-url "scanner" "filtered-stocks")
+          job {:workflow the-workflow
+               :catalog the-catalog
+               :task-scheduler :onyx.task-scheduler/balanced}]
+      #spy/d (onyx.api/submit-job peer-config job))
+
+    #_(let [the-workflow pfs/workflow
+          the-catalog (pfs/catalog zookeeper-url "filtered-stocks" "stock-command")
+          job {:workflow the-workflow
+               :catalog the-catalog
+               :task-scheduler :onyx.task-scheduler/balanced}]
+      #spy/d (onyx.api/submit-job peer-config job))
+
+    #_(let [the-workflow pstc/workflow
+          the-catalog (pstc/catalog zookeeper-url "stock-command" "stock")
+          job {:workflow the-workflow
+               :catalog the-catalog
+               :task-scheduler :onyx.task-scheduler/balanced}]
+      #spy/d (onyx.api/submit-job peer-config job))
+
+    #_(let [the-workflow pst/workflow
+          the-catalog (pst/catalog zookeeper-url "stock" "predictive-analytics" )
+          job {:workflow the-workflow
+               :catalog the-catalog
+               :task-scheduler :onyx.task-scheduler/balanced}]
+      #spy/d (onyx.api/submit-job peer-config job))
+
+    #_(let [the-workflow pa/workflow
+          the-catalog (pa/catalog zookeeper-url "predictive-analytics" "filtered-stocks" "historical-command")
+          job {:workflow the-workflow
+               :catalog the-catalog
+               :task-scheduler :onyx.task-scheduler/balanced}]
+      #spy/d (onyx.api/submit-job peer-config job))
+
+    #_(let [the-workflow phc/workflow
+          the-catalog (phc/catalog zookeeper-url "historical-command" "historical")
+          job {:workflow the-workflow
+               :catalog the-catalog
+               :task-scheduler :onyx.task-scheduler/balanced}]
+      #spy/d (onyx.api/submit-job peer-config job))
+
+    #_(let [the-workflow ph/workflow
+          the-catalog (ph/catalog zookeeper-url "historical" "trade-recommendations")
+          job {:workflow the-workflow
+               :catalog the-catalog
+               :task-scheduler :onyx.task-scheduler/balanced}]
+      #spy/d (onyx.api/submit-job peer-config job))
+
+    #_(let [the-workflow ptr/workflow
+          the-catalog (ptr/catalog zookeeper-url "trade-recommendations" "trades")
+          job {:workflow the-workflow
+               :catalog the-catalog
+               :task-scheduler :onyx.task-scheduler/balanced}]
+      #spy/d (onyx.api/submit-job peer-config job))
+
+    #_(let [the-workflow pt/workflow
+          the-catalog (pt/catalog zookeeper-url "trades" "positions")
+          job {:workflow the-workflow
+               :catalog the-catalog
+               :task-scheduler :onyx.task-scheduler/balanced}]
+      #spy/d (onyx.api/submit-job peer-config job))
+
+    #_(let [the-workflow pp/workflow
+          the-catalog (pp/catalog zookeeper-url "positions" "scanner-command")
           job {:workflow the-workflow
                :catalog the-catalog
                :task-scheduler :onyx.task-scheduler/balanced}]

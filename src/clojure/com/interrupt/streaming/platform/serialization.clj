@@ -23,8 +23,3 @@
 
 #_(defn serialize-kafka-key [topic k]
   (.serialize string-serializer topic k))
-
-
-(defn local-identity [segment]
-  (println "local-identity segment: " segment)
-  (dissoc segment :topic))

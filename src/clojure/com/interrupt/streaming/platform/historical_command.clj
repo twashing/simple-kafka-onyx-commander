@@ -1,15 +1,15 @@
-(ns com.interrupt.streaming.platform.filtered-stocks
+(ns com.interrupt.streaming.platform.historical-command
   (:require [com.interrupt.streaming.platform.base :as base]
             [com.interrupt.streaming.platform.serialization]))
 
 
 (def workflow
-  [[:filtered-stocks :analytics]
-   [:analytics :stock-command]])
+  [[:historical-command :ibgateway]
+   [:ibgateway :historical]])
 
 (defn catalog [zookeeper-url topic-read topic-write]
   (base/catalog-basic zookeeper-url topic-read topic-write
-                      {:input-name :filtered-stocks
-                       :output-name :stock-command
-                       :function-name :analytics
+                      {:input-name :historical-command
+                       :output-name :ibgateway
+                       :function-name :historical
                        :function-id :com.interrupt.streaming.platform.base/local-identity}))
