@@ -121,6 +121,26 @@ resource "aws_security_group" "edgarly" {
   name = "edgarly"
   description = "edgarly"
 
+  ingress {
+      from_port = 80
+      to_port = 80
+      protocol = "tcp"
+      cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  ingress {
+      from_port = 22
+      to_port = 22
+      protocol = "tcp"
+      cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  egress {
+      from_port = 0
+      to_port = 0
+      protocol = "-1"
+      cidr_blocks = ["0.0.0.0/0"]
+  }
 }
 
 resource "aws_instance" "zookeeper-instance" {
@@ -129,7 +149,7 @@ resource "aws_instance" "zookeeper-instance" {
   security_groups = ["${aws_security_group.edgarly.name}"]
   iam_instance_profile = "${aws_iam_instance_profile.edgarly.name}"
   user_data = "#!/bin/bash\necho ECS_CLUSTER=edgarly >> /etc/ecs/ecs.config"
-  key_name = "foobar"
+  key_name = "aws-timothyjwashington-keypair"
 }
 resource "aws_instance" "kafka-instance" {
   ami = "ami-bb473cdb"
@@ -137,7 +157,7 @@ resource "aws_instance" "kafka-instance" {
   security_groups = ["${aws_security_group.edgarly.name}"]
   iam_instance_profile = "${aws_iam_instance_profile.edgarly.name}"
   user_data = "#!/bin/bash\necho ECS_CLUSTER=edgarly >> /etc/ecs/ecs.config"
-  key_name = "foobar"
+  key_name = "aws-timothyjwashington-keypair"
 }
 resource "aws_instance" "edgarly-instance" {
   ami = "ami-bb473cdb"
@@ -145,5 +165,5 @@ resource "aws_instance" "edgarly-instance" {
   security_groups = ["${aws_security_group.edgarly.name}"]
   iam_instance_profile = "edgarly"
   user_data = "#!/bin/bash\necho ECS_CLUSTER=edgarly >> /etc/ecs/ecs.config"
-  key_name = "foobar"
+  key_name = "aws-timothyjwashington-keypair"
 }
