@@ -12,6 +12,7 @@
                  [org.clojure/tools.reader "1.0.0-beta1"]
                  [slingshot "0.12.2"]
                  [clj-time "0.9.0"]
+                 [http-kit "2.1.19"]
                  ;; end explicit versions of deps that would cause transitive dep conflicts
 
                  [aero "1.1.2"]

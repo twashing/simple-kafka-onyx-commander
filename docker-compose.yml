@@ -1,30 +1,30 @@
 version: '2'
 services:
 
-  consul:
-    image: consul:0.8.3
-    tty: true
-    expose:
-      - 8300
-      - 8301
-      - 8301/udp
-      - 8302
-      - 8302/udp
-      - 8400
-      - 8500
-      - 8600
-      - 8600/udp
-    ports:
-      - 8300:8300
-      - 8301:8301
-      - 8301/udp:8301/udp
-      - 8302:8302
-      - 8302/udp:8302/udp
-      - 8400:8400
-      - 8500:8500
-      - 8600:8600
-      - 8600/udp:8600/udp
-    command: "agent -server -bind=0.0.0.0 -retry-join=0.0.0.0 -bootstrap-expect=1"
+  # consul:
+  #   image: consul:0.8.3
+  #   tty: true
+  #   expose:
+  #     - 8300
+  #     - 8301
+  #     - 8301/udp
+  #     - 8302
+  #     - 8302/udp
+  #     - 8400
+  #     - 8500
+  #     - 8600
+  #     - 8600/udp
+  #   ports:
+  #     - 8300:8300
+  #     - 8301:8301
+  #     - 8301/udp:8301/udp
+  #     - 8302:8302
+  #     - 8302/udp:8302/udp
+  #     - 8400:8400
+  #     - 8500:8500
+  #     - 8600:8600
+  #     - 8600/udp:8600/udp
+  #   command: "agent -server -bind=0.0.0.0 -retry-join=0.0.0.0 -bootstrap-expect=1"
 
   zookeeper:
     image: confluentinc/cp-zookeeper:3.1.1
@@ -61,6 +61,7 @@ services:
     shm_size: 2G
     ports:
       - 7888:7888
+      - 8081:8081
     volumes:
       - .:${PWD}
     entrypoint: lein with-profile +app run -m com.interrupt.edgarly.core/-main
