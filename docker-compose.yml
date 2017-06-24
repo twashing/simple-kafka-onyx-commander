@@ -1,70 +1,30 @@
-version: '2'
+version: '3'
 services:
-
-  # consul:
-  #   image: consul:0.8.3
-  #   tty: true
-  #   expose:
-  #     - 8300
-  #     - 8301
-  #     - 8301/udp
-  #     - 8302
-  #     - 8302/udp
-  #     - 8400
-  #     - 8500
-  #     - 8600
-  #     - 8600/udp
-  #   ports:
-  #     - 8300:8300
-  #     - 8301:8301
-  #     - 8301/udp:8301/udp
-  #     - 8302:8302
-  #     - 8302/udp:8302/udp
-  #     - 8400:8400
-  #     - 8500:8500
-  #     - 8600:8600
-  #     - 8600/udp:8600/udp
-  #   command: "agent -server -bind=0.0.0.0 -retry-join=0.0.0.0 -bootstrap-expect=1"
 
   zookeeper:
     image: confluentinc/cp-zookeeper:3.1.1
     environment:
       - ZOOKEEPER_CLIENT_PORT=2181
-    expose:
-      - 2181
+    # expose:
+    #   - 2181
+    deploy:
+      replicas: 3
 
   kafka:
-    expose:
-      - 9092
-      - 8082
-    environment:
-      - KAFKA_BROKER_ID=0
-      - KAFKA_ZOOKEEPER_CONNECT=zookeeper:2181
-      - KAFKA_ADVERTISED_LISTENERS=PLAINTEXT://kafka:9092
-      - KAFKA_AUTO_CREATE_TOPICS_ENABLE=true
     image: confluentinc/cp-kafka:3.1.1
+    tty: true
+    environment:
+      # - KAFKA_BROKER_ID=0
+      - KAFKA_ZOOKEEPER_CONNECT=zookeeper:2181
+      # - KAFKA_ADVERTISED_LISTENERS=PLAINTEXT://kafka:9092
+      # - KAFKA_AUTO_CREATE_TOPICS_ENABLE=true
+    # expose:
+    #   - 9092
+    #   - 8082
+    deploy:
+       replicas: 10
     depends_on:
       - zookeeper
-
-  app:
-    build:
-      context: .
-      dockerfile: Dockerfile.app
-    image: twashing/simple-kafka-onyx-commander:latest
-    depends_on:
-      - kafka
-      - zookeeper
-    links:
-      - kafka:kafka
-      - zookeeper:zookeeper
-    working_dir: ${PWD}
-    shm_size: 2G
-    ports:
-      - 7888:7888
-      - 8081:8081
-    volumes:
-      - .:${PWD}
-    entrypoint: lein with-profile +app run -m com.interrupt.edgarly.core/-main
 
   kafka-tools:
     image: confluentinc/cp-kafka:3.1.1
@@ -76,5 +36,7 @@ services:
       - BOOTSTRAP_SERVERS=kafka:9092
       - ZOOKEEPER_CONNECT=zookeeper:2181
       - SCHEMA_REGISTRY_URL=http://schema-registry:8081
+    deploy:
+      replicas: 1
     working_dir: /usr/src/app
     entrypoint: /bin/bash
