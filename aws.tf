@@ -1,6 +1,3 @@
-variable "access_key" {}
-variable "secret_key" {}
-
 provider "aws" {
   region = "us-west-1"
   access_key = "${var.access_key}"
@@ -73,7 +70,6 @@ resource "aws_iam_role" "edgarly" {
 }
 EOF
 }
-
 resource "aws_iam_policy" "edgarly" {
     name = "edgarly"
     path = "/"
@@ -105,13 +101,11 @@ resource "aws_iam_policy" "edgarly" {
 }
 EOF
 }
-
 resource "aws_iam_policy_attachment" "edgarly" {
     name = "edgarly"
     roles = ["${aws_iam_role.edgarly.name}"]
     policy_arn = "${aws_iam_policy.edgarly.arn}"
 }
-
 resource "aws_iam_instance_profile" "edgarly" {
     name = "edgarly"
     roles = ["${aws_iam_role.edgarly.name}"]
