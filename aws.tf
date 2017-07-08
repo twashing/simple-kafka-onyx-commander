@@ -20,12 +20,6 @@ resource "aws_ecs_service" "kafka_service" {
   task_definition = "${aws_ecs_task_definition.kafka-task.arn}"
   desired_count   = 1
 }
-resource "aws_ecs_service" "edgarly_service" {
-  name            = "edgarly-service"
-  cluster         = "${aws_ecs_cluster.default.id}"
-  task_definition = "${aws_ecs_task_definition.edgarly-task.arn}"
-  desired_count   = 1
-}
 
 resource "aws_ecs_task_definition" "zookeeper-task" {
   family = "zookeeper"
@@ -41,14 +35,6 @@ resource "aws_ecs_task_definition" "kafka-task" {
   volume {
     name = "kafka-home"
     host_path = "/ecs/kafka-home"
-  }
-}
-resource "aws_ecs_task_definition" "edgarly-task" {
-  family = "edgarly"
-  container_definitions = "${file("task-definitions/edgarly.json")}"
-  volume {
-    name = "edgarly-home"
-    host_path = "/ecs/edgarly-home"
   }
 }
 
@@ -153,11 +139,4 @@ resource "aws_instance" "kafka-instance" {
   user_data = "#!/bin/bash\necho ECS_CLUSTER=edgarly >> /etc/ecs/ecs.config"
   key_name = "aws-timothyjwashington-keypair"
 }
-resource "aws_instance" "edgarly-instance" {
-  ami = "ami-bb473cdb"
-  instance_type = "t2.small"
-  security_groups = ["${aws_security_group.edgarly.name}"]
-  iam_instance_profile = "edgarly"
-  user_data = "#!/bin/bash\necho ECS_CLUSTER=edgarly >> /etc/ecs/ecs.config"
-  key_name = "aws-timothyjwashington-keypair"
-}
+
