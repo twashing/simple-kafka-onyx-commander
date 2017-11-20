@@ -12,7 +12,7 @@
 
 (defn system-map []
   (component/system-map
-   :nrepl (new-repl-server 7888 "0.0.0.0")
+   :nrepl (new-repl-server 5444 "0.0.0.0")
    :webserver (new-web-server 8081 handler)))
 
 (set-init! #'system-map)

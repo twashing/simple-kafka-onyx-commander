@@ -1,5 +1,4 @@
 FROM pandeiro/lein:latest
-
 MAINTAINER Timothy Washington
 
 COPY project.clj .

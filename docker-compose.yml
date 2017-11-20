@@ -1,14 +1,12 @@
-version: '3'
+version: '3.3'
 services:
 
   zookeeper:
-    image: confluentinc/cp-zookeeper:3.2.2
+    image: confluentinc/cp-zookeeper:3.3.1
     environment:
       - ZOOKEEPER_CLIENT_PORT=2181
     ports:
       - 2181:2181
-    expose:
-      - 2181
     deploy:
       replicas: 2
       restart_policy:
@@ -17,16 +15,16 @@ services:
         max_attempts: 3
 
   kafka:
-    image: confluentinc/cp-kafka:3.2.2
-    tty: true
+    image: confluentinc/cp-kafka:3.3.1
+    ports:
+      - 9092:9092
+      - 8082:8082
     environment:
       - KAFKA_BROKER_ID=0
       - KAFKA_ZOOKEEPER_CONNECT=zookeeper:2181
       - KAFKA_ADVERTISED_LISTENERS=PLAINTEXT://kafka:9092
       - KAFKA_AUTO_CREATE_TOPICS_ENABLE=true
-    ports:
-      - 9092:9092
-      - 8082:8082
+      - KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR=1
     depends_on:
       - zookeeper
     deploy:
@@ -35,36 +33,37 @@ services:
         condition: on-failure
         delay: 5s
         max_attempts: 3
+        window: 120s
 
-  # app:
-  #   build:
-  #     context: .
-  #     dockerfile: Dockerfile.app
-  #   image: twashing/simple-kafka-onyx-commander:latest
-  #   depends_on:
-  #     - kafka
-  #     - zookeeper
-  #   links:
-  #     - kafka:kafka
-  #     - zookeeper:zookeeper
-  #   working_dir: ${PWD}
-  #   shm_size: 2G
-  #   ports:
-  #     - 7888:7888
-  #     - 8081:8081
-  #   volumes:
-  #     - .:${PWD}
-  #   entrypoint: lein with-profile +app run -m com.interrupt.edgarly.core/-main
-  # 
-  # kafka-tools:
-  #   image: confluentinc/cp-kafka:3.2.2
-  #   tty: true
-  #   depends_on:
-  #     - zookeeper
-  #     - kafka
-  #   environment:
-  #     - BOOTSTRAP_SERVERS=kafka:9092
-  #     - ZOOKEEPER_CONNECT=zookeeper:2181
-  #     - SCHEMA_REGISTRY_URL=http://schema-registry:8081
-  #   working_dir: /usr/src/app
-  #   entrypoint: /bin/bash
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile.app
+    image: twashing/simple-kafka-onyx-commander:latest
+    depends_on:
+      - kafka
+      - zookeeper
+    links:
+      - kafka:kafka
+      - zookeeper:zookeeper
+    working_dir: ${PWD}
+    shm_size: 2G
+    ports:
+      - 5444:5444
+      - 8081:8081
+    volumes:
+      - .:${PWD}
+    entrypoint: lein with-profile +app run -m com.interrupt.edgarly.core/-main
+  
+  kafka-tools:
+    image: confluentinc/cp-kafka:3.3.1
+    depends_on:
+      - zookeeper
+      - kafka
+    environment:
+      - BOOTSTRAP_SERVERS=kafka:9092
+      - ZOOKEEPER_CONNECT=zookeeper:2181
+      - SCHEMA_REGISTRY_URL=http://schema-registry:8081
+    tty: true
+    working_dir: /usr/src/app
+    entrypoint: /bin/bash

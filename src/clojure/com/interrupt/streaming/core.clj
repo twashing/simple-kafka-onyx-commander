@@ -9,7 +9,7 @@
             [franzy.serialization.serializers :as serializers]
             [franzy.serialization.deserializers :as deserializers]
             [franzy.admin.zookeeper.client :as client]
-            [franzy.admin.topics :as topics]
+            #_[franzy.admin.topics :as topics]
             [franzy.clients.producer.defaults :as pd]
             [franzy.clients.consumer.defaults :as cd])
   (:import [java.util UUID]))
@@ -25,7 +25,7 @@
 (def key-deserializer (deserializers/keyword-deserializer))
 (def value-deserializer (deserializers/edn-deserializer))
 
-(defn one-setup-topics []
+#_(defn one-setup-topics []
   (def zk-utils (client/make-zk-utils {:servers [zookeeper-url]} false))
   (def two (topics/create-topic! zk-utils topic-scanner-command 10))
   (def three (topics/create-topic! zk-utils topic-scanner 10))
@@ -205,6 +205,9 @@
         env (onyx.api/start-env env-config)
         peer-group (onyx.api/start-peer-group peer-config)
         v-peers (onyx.api/start-peers 5 peer-group)
-        submission (onyx.api/submit-job peer-config job)]
 
-    (onyx.api/await-job-completion peer-config (:job-id submission))))
+        submission (onyx.api/submit-job peer-config job)
+        job-submission-result (onyx.api/await-job-completion peer-config (:job-id submission))]
+
+    (println "Submit Job result:" submission)
+    (println "Await job completion:" job-submission-result)))
